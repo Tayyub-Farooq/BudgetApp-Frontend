@@ -1,0 +1,10 @@
+/* Tailwind v4 single import */
+@import "tailwindcss";
+
+/* optional: a tiny global base so things don’t look naked */
+:root {
+  --app-bg: #f8fafc;       /* slate-50 */
+  --app-fg: #0f172a;       /* slate-900 */
+}
+html, body, #root { height: 100%; }
+body { background: var(--app-bg); color: var(--app-fg); }
