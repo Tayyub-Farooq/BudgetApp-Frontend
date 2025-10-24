@@ -9,3 +9,7 @@ dist/
 .vscode/
 .DS_Store
 Thumbs.db
+# Vite cache + build
+.vite/
+node_modules/.vite/
+dist/
