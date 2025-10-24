@@ -46,11 +46,11 @@ export default function Dashboard() {
     clearToken(); clearUser(); navigate("/login");
   }
 
-  // Simple inline create form (you can replace with a modal later)
+ 
  async function addExpense(e) {
   e.preventDefault();
-// const form = new FormData(e.currentTarget);
- const formEl = e.currentTarget;            // keep a ref before any await
+
+ const formEl = e.currentTarget;           
  const form = new FormData(formEl);
 
   const payload = {
@@ -61,8 +61,8 @@ export default function Dashboard() {
   };
 
   await apiFetch("/expenses", { method: "POST", body: payload });
-// e.currentTarget.reset();
- formEl.reset();                             // safe: not using the pooled event
+
+ formEl.reset();                            
   await load();
 }
 
