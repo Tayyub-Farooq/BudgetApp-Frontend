@@ -5,6 +5,8 @@ import { apiFetch } from "../lib/api";
 import { clearToken, clearUser, getUser } from "../lib/storage";
 import { Pencil, Trash2, LogOut, Calendar, Plus } from "lucide-react";
 
+import EditExpenseModal from "../components/EditExpenseModal"; 
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const user = getUser();
@@ -13,6 +15,27 @@ export default function Dashboard() {
   const [expenses, setExpenses] = useState([]);
   const [summary, setSummary] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  //for edit modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+
+ // 打开编辑模态框
+  function handleEdit(expense) {
+    setEditingExpense(expense);
+    setIsModalOpen(true);
+  }
+
+  // 关闭编辑模态框
+  function handleCloseModal() {
+    setIsModalOpen(false);
+    setEditingExpense(null);
+  }
+
+  // 保存成功后的回调
+  async function handleSaveSuccess() {
+    await load(); // 重新加载数据
+  }
 
   const total = useMemo(
     () => expenses.reduce((s, e) => s + Number(e.amount || 0), 0),
@@ -200,8 +223,11 @@ export default function Dashboard() {
                     <td className="hidden md:table-cell text-slate-600">{e.note || "—"}</td>
                     <td className="text-right font-medium">${Number(e.amount).toFixed(2)}</td>
                     <td className="text-right">
-                      <button title="Edit" className="p-1.5 rounded hover:bg-slate-100 inline-flex">
+
+                      <button title="Edit" onClick={() => handleEdit(e)}
+                              className="p-1.5 rounded hover:bg-slate-100 inline-flex">
                         <Pencil className="h-4 w-4" />
+
                       </button>
                       <button title="Delete" onClick={() => remove(e.id)}
                               className="p-1.5 rounded hover:bg-red-50 text-red-600 inline-flex">
@@ -218,6 +244,14 @@ export default function Dashboard() {
           </div>
         </section>
       </main>
+      
+      {/* edit expense modal */}
+      <EditExpenseModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        expense={editingExpense}
+        onSave={handleSaveSuccess}
+      />
     </div>
   );
 }
