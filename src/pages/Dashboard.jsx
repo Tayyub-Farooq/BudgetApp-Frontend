@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { apiFetch } from "../lib/api";
-import { getMonthlyOverview } from "../lib/api";
 import { clearToken, clearUser, getUser } from "../lib/storage";
 import { Pencil, Trash2, LogOut, Calendar, Plus } from "lucide-react";
 
@@ -13,29 +12,23 @@ export default function Dashboard() {
   const [month, setMonth] = useState(() => format(new Date(), "yyyy-MM"));
   const [expenses, setExpenses] = useState([]);
   const [summary, setSummary] = useState([]);
-  const [overview, setOverview] = useState(null); // { total, month }
   const [loading, setLoading] = useState(true);
 
-  const computedTotal = useMemo(
+  const total = useMemo(
     () => expenses.reduce((s, e) => s + Number(e.amount || 0), 0),
     [expenses]
   );
-  const shownTotal = overview?.total ?? computedTotal;
 
-  useEffect(() => {
-    load();
-  }, [month]);
+  useEffect(() => { load(); }, [month]);
 
   async function load() {
     setLoading(true);
     try {
-      const [eRes, sRes, oRes] = await Promise.all([
+      const [eRes, sRes] = await Promise.all([
         apiFetch(`/expenses?month=${month}`),
         apiFetch(`/expenses/summary?month=${month}`),
-        getMonthlyOverview(month), // calls /expenses/summary/overview?month=YYYY-MM
       ]);
-
-      const mapped = (eRes.expenses || []).map((x) => ({
+      const mapped = (eRes.expenses || []).map(x => ({
         id: x._id || x.id,
         category: x.category,
         amount: x.amount,
@@ -44,39 +37,34 @@ export default function Dashboard() {
       }));
       setExpenses(mapped);
       setSummary(sRes.summary || []);
-      setOverview(oRes || null);
     } catch (e) {
       console.error(e);
-      setOverview(null);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }
 
   function logout() {
-    clearToken();
-    clearUser();
-    navigate("/login");
+    clearToken(); clearUser(); navigate("/login");
   }
 
-  async function addExpense(e) {
-    e.preventDefault();
+ 
+ async function addExpense(e) {
+  e.preventDefault();
 
-    const formEl = e.currentTarget;
-    const form = new FormData(formEl);
+ const formEl = e.currentTarget;           
+ const form = new FormData(formEl);
 
-    const payload = {
-      category: form.get("category"),
-      amount: parseFloat(form.get("amount")),
-      occurredOn: form.get("date"),
-      note: form.get("note") || undefined,
-    };
+  const payload = {
+    category: form.get("category"),
+    amount: parseFloat(form.get("amount")),
+    occurredOn: form.get("date"),
+    note: form.get("note") || undefined,
+  };
 
-    await apiFetch("/expenses", { method: "POST", body: payload });
+  await apiFetch("/expenses", { method: "POST", body: payload });
 
-    formEl.reset();
-    await load();
-  }
+ formEl.reset();                            
+  await load();
+}
 
   async function remove(id) {
     if (!confirm("Delete this expense?")) return;
@@ -93,10 +81,7 @@ export default function Dashboard() {
             <div className="text-lg font-semibold">ExpenseFlow</div>
             <div className="text-xs text-slate-500">{user?.email}</div>
           </div>
-          <button
-            onClick={logout}
-            className="inline-flex items-center gap-2 px-3 py-1.5 border rounded hover:bg-slate-50"
-          >
+          <button onClick={logout} className="inline-flex items-center gap-2 px-3 py-1.5 border rounded hover:bg-slate-50">
             <LogOut className="h-4 w-4" /> Logout
           </button>
         </div>
@@ -111,10 +96,7 @@ export default function Dashboard() {
               className="bg-white rounded px-2 py-1 text-sm"
             />
             <div className="flex-1" />
-            <a
-              href="#add"
-              className="inline-flex items-center gap-2 bg-white text-blue-700 rounded px-3 py-1.5 font-medium"
-            >
+            <a href="#add" className="inline-flex items-center gap-2 bg-white text-blue-700 rounded px-3 py-1.5 font-medium">
               <Plus className="h-4 w-4" /> Add Expense
             </a>
           </div>
@@ -126,16 +108,9 @@ export default function Dashboard() {
         <section className="grid md:grid-cols-2 gap-4">
           <div className="bg-white border rounded-lg p-4">
             <div className="text-sm text-slate-500">Total Spent</div>
-            <div className="text-3xl font-semibold mt-2">
-              ${Number(shownTotal).toFixed(2)}
-            </div>
+            <div className="text-3xl font-semibold mt-2">${total.toFixed(2)}</div>
             <div className="text-xs text-slate-500 mt-1">
-              {format(new Date((overview?.month || month) + "-01"), "MMMM yyyy")}
-              {overview && overview.total !== computedTotal && (
-                <span className="ml-2 text-[11px] text-slate-400">
-                  (from API)
-                </span>
-              )}
+              {format(new Date(month + "-01"), "MMMM yyyy")}
             </div>
           </div>
           <div className="bg-white border rounded-lg p-4">
@@ -159,21 +134,17 @@ export default function Dashboard() {
               <div className="text-slate-500">No data for this month</div>
             )}
             {summary.map((row) => {
-              const pct =
-                shownTotal > 0 ? (Number(row.total) / Number(shownTotal)) * 100 : 0;
+              const pct = total > 0 ? (row.total / total) * 100 : 0;
               return (
                 <div key={row.category} className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium">{row.category}</span>
                     <span className="text-slate-500">
-                      ${Number(row.total).toFixed(2)} ({pct.toFixed(1)}%)
+                      ${row.total.toFixed(2)} ({pct.toFixed(1)}%)
                     </span>
                   </div>
                   <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-2 bg-blue-600"
-                      style={{ width: `${pct}%` }}
-                    />
+                    <div className="h-2 bg-blue-600" style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               );
@@ -187,41 +158,15 @@ export default function Dashboard() {
           <form onSubmit={addExpense} className="p-4 grid gap-3 md:grid-cols-4">
             <select name="category" required className="border rounded px-3 py-2">
               <option value="">Category</option>
-              {[
-                "Food",
-                "Transport",
-                "Bills",
-                "Shopping",
-                "Health",
-                "Entertainment",
-                "Other",
-              ].map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
+              {["Food","Transport","Bills","Shopping","Health","Entertainment","Other"].map(c =>
+                <option key={c} value={c}>{c}</option>
+              )}
             </select>
-            <input
-              name="amount"
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              placeholder="Amount"
-              className="border rounded px-3 py-2"
-            />
-            <input
-              name="date"
-              type="date"
-              required
-              defaultValue={format(new Date(), "yyyy-MM-dd")}
-              className="border rounded px-3 py-2"
-            />
-            <input
-              name="note"
-              placeholder="Note (optional)"
-              className="border rounded px-3 py-2 md:col-span-3"
-            />
+            <input name="amount" type="number" step="0.01" min="0" required placeholder="Amount"
+                   className="border rounded px-3 py-2"/>
+            <input name="date" type="date" required defaultValue={format(new Date(), "yyyy-MM-dd")}
+                   className="border rounded px-3 py-2"/>
+            <input name="note" placeholder="Note (optional)" className="border rounded px-3 py-2 md:col-span-3"/>
             <div className="md:col-span-1">
               <button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-2 font-medium">
                 Save
@@ -234,9 +179,7 @@ export default function Dashboard() {
         <section className="bg-white border rounded-lg">
           <div className="p-4 border-b">
             <div className="font-semibold">Recent Expenses</div>
-            <div className="text-sm text-slate-500">
-              {expenses.length} transaction(s) this month
-            </div>
+            <div className="text-sm text-slate-500">{expenses.length} transaction(s) this month</div>
           </div>
           <div className="p-4 overflow-x-auto">
             <table className="w-full text-sm">
@@ -252,43 +195,23 @@ export default function Dashboard() {
               <tbody>
                 {expenses.map((e) => (
                   <tr key={e.id} className="border-t">
-                    <td className="py-2">
-                      {format(new Date(e.occurredOn), "MMM dd")}
-                    </td>
-                    <td>
-                      <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
-                        {e.category}
-                      </span>
-                    </td>
-                    <td className="hidden md:table-cell text-slate-600">
-                      {e.note || "—"}
-                    </td>
-                    <td className="text-right font-medium">
-                      ${Number(e.amount).toFixed(2)}
-                    </td>
+                    <td className="py-2">{format(new Date(e.occurredOn), "MMM dd")}</td>
+                    <td><span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">{e.category}</span></td>
+                    <td className="hidden md:table-cell text-slate-600">{e.note || "—"}</td>
+                    <td className="text-right font-medium">${Number(e.amount).toFixed(2)}</td>
                     <td className="text-right">
-                      <button
-                        title="Edit"
-                        className="p-1.5 rounded hover:bg-slate-100 inline-flex"
-                      >
+                      <button title="Edit" className="p-1.5 rounded hover:bg-slate-100 inline-flex">
                         <Pencil className="h-4 w-4" />
                       </button>
-                      <button
-                        title="Delete"
-                        onClick={() => remove(e.id)}
-                        className="p-1.5 rounded hover:bg-red-50 text-red-600 inline-flex"
-                      >
+                      <button title="Delete" onClick={() => remove(e.id)}
+                              className="p-1.5 rounded hover:bg-red-50 text-red-600 inline-flex">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </td>
                   </tr>
                 ))}
                 {expenses.length === 0 && !loading && (
-                  <tr>
-                    <td className="py-6 text-slate-500" colSpan={5}>
-                      No expenses found
-                    </td>
-                  </tr>
+                  <tr><td className="py-6 text-slate-500" colSpan={5}>No expenses found</td></tr>
                 )}
               </tbody>
             </table>
