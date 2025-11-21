@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
-import { apiFetch } from "../lib/api";
+import { apiFetch, getMonthlyOverview,updateUser } from "../lib/api";
 import { clearToken, clearUser, getUser } from "../lib/storage";
-import { Pencil, Trash2, LogOut, Calendar, Plus } from "lucide-react";
+import { Pencil, Trash2, LogOut, Calendar, Plus, Settings } from "lucide-react";
 
 import EditExpenseModal from "../components/EditExpenseModal"; 
+import BudgetModal from "../components/BudgetModal";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -20,21 +21,29 @@ export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
 
- // 打开编辑模态框
+  // State for Budget Overview
+  const [isBudgetModalOpen, setBudgetModalOpen] = useState(false);
+  const [overview, setOverview] = useState({ 
+    total: 0, 
+    budget: 0, 
+    remaining: 0, 
+    percentage: 0, 
+    alert: null 
+  });
+  
+
   function handleEdit(expense) {
     setEditingExpense(expense);
     setIsModalOpen(true);
   }
 
-  // 关闭编辑模态框
   function handleCloseModal() {
     setIsModalOpen(false);
     setEditingExpense(null);
   }
 
-  // 保存成功后的回调
   async function handleSaveSuccess() {
-    await load(); // 重新加载数据
+    await load(); //reload data after save
   }
 
   const total = useMemo(
@@ -47,9 +56,10 @@ export default function Dashboard() {
   async function load() {
     setLoading(true);
     try {
-      const [eRes, sRes] = await Promise.all([
+      const [eRes, sRes, oRes] = await Promise.all([
         apiFetch(`/expenses?month=${month}`),
         apiFetch(`/expenses/summary?month=${month}`),
+        getMonthlyOverview(month), //
       ]);
       const mapped = (eRes.expenses || []).map(x => ({
         id: x._id || x.id,
@@ -60,6 +70,7 @@ export default function Dashboard() {
       }));
       setExpenses(mapped);
       setSummary(sRes.summary || []);
+      setOverview(oRes); //Store overview
     } catch (e) {
       console.error(e);
     } finally { setLoading(false); }
@@ -69,31 +80,46 @@ export default function Dashboard() {
     clearToken(); clearUser(); navigate("/login");
   }
 
- 
- async function addExpense(e) {
-  e.preventDefault();
+  async function addExpense(e) {
+    e.preventDefault();
 
- const formEl = e.currentTarget;           
- const form = new FormData(formEl);
+  const formEl = e.currentTarget;           
+  const form = new FormData(formEl);
 
-  const payload = {
-    category: form.get("category"),
-    amount: parseFloat(form.get("amount")),
-    occurredOn: form.get("date"),
-    note: form.get("note") || undefined,
-  };
+    const payload = {
+      category: form.get("category"),
+      amount: parseFloat(form.get("amount")),
+      occurredOn: form.get("date"),
+      note: form.get("note") || undefined,
+    };
 
-  await apiFetch("/expenses", { method: "POST", body: payload });
+    await apiFetch("/expenses", { method: "POST", body: payload });
 
- formEl.reset();                            
-  await load();
-}
+  formEl.reset();                            
+    await load();
+  }
 
   async function remove(id) {
     if (!confirm("Delete this expense?")) return;
     await apiFetch(`/expenses/${id}`, { method: "DELETE" });
     await load();
   }
+
+
+  // Handle saving the budget
+  async function handleSaveBudget(newAmount) {
+    await updateUser({ monthlyBudget: newAmount });
+    await load(); // Reload to recalculate numbers
+  }
+
+  // Helper for progress bar color
+  const getProgressColor = () => {
+    if (overview.alert === "OVERLIMIT") return "bg-red-500";
+    if (overview.alert === "WARNING") return "bg-orange-500";
+    return "bg-blue-600";
+  };
+
+
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -129,13 +155,51 @@ export default function Dashboard() {
       <main className="max-w-6xl mx-auto p-4 space-y-6">
         {/* KPI cards */}
         <section className="grid md:grid-cols-2 gap-4">
-          <div className="bg-white border rounded-lg p-4">
-            <div className="text-sm text-slate-500">Total Spent</div>
-            <div className="text-3xl font-semibold mt-2">${total.toFixed(2)}</div>
-            <div className="text-xs text-slate-500 mt-1">
-              {format(new Date(month + "-01"), "MMMM yyyy")}
+
+        {/* Total Spent / Budget Card */}
+          <div className="bg-white border rounded-lg p-4 relative">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="text-sm text-slate-500">Total Spent</div>
+                <div className="text-3xl font-semibold mt-2">
+                  ${overview.total.toFixed(2)}
+                </div>
+              </div>
+              <button 
+                onClick={() => setBudgetModalOpen(true)}
+                className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600"
+                title="Edit Budget"
+              >
+                <Settings className="h-5 w-5" />
+              </button>
             </div>
+
+          {/* Budget Progress Bar */}
+            {overview.budget > 0 ? (
+              <div className="mt-4">
+                <div className="flex justify-between text-xs text-slate-500 mb-1">
+                  <span>
+                    {overview.percentage}% of ${overview.budget} budget
+                  </span>
+                  <span className={overview.remaining < 0 ? "text-red-600 font-medium" : ""}>
+                    {overview.remaining < 0 ? "Over by " : "Left: "} 
+                    ${Math.abs(overview.remaining).toFixed(2)}
+                  </span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                  <div 
+                    className={`h-2.5 rounded-full transition-all duration-500 ${getProgressColor()}`} 
+                    style={{ width: `${Math.min(overview.percentage, 100)}%` }} 
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 text-xs text-slate-400 italic">
+                No budget set. Click settings to track limits.
+              </div>
+            )}
           </div>
+
           <div className="bg-white border rounded-lg p-4">
             <div className="text-sm text-slate-500">Transactions</div>
             <div className="text-3xl font-semibold mt-2">{expenses.length}</div>
@@ -143,6 +207,7 @@ export default function Dashboard() {
               {expenses.length === 1 ? "expense recorded" : "expenses recorded"}
             </div>
           </div>
+
         </section>
 
         {/* Category breakdown */}
@@ -244,6 +309,14 @@ export default function Dashboard() {
           </div>
         </section>
       </main>
+
+      {/* Budget Modal */}
+      <BudgetModal 
+        isOpen={isBudgetModalOpen}
+        onClose={() => setBudgetModalOpen(false)}
+        currentBudget={overview.budget}
+        onSave={handleSaveBudget}
+      />
       
       {/* edit expense modal */}
       <EditExpenseModal
