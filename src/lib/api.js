@@ -49,3 +49,18 @@ export function getMonthlyOverview(month) {
   const qs = month ? `?month=${encodeURIComponent(month)}` : "";
   return apiFetch(`/expenses/summary/overview${qs}`);
 }
+export function listCards() {
+  return apiFetch("/cards");
+}
+
+export function createCardApi(payload) {
+  return apiFetch("/cards", { method: "POST", body: payload });
+}
+
+export function deleteCardApi(id) {
+  return apiFetch(`/cards/${id}`, { method: "DELETE" });
+}
+
+export function getCardAlerts() {
+  return apiFetch("/cards/alerts");
+}

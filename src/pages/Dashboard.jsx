@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
-import { apiFetch } from "../lib/api";
+import { apiFetch, listCards, createCardApi, deleteCardApi, getCardAlerts } from "../lib/api";
 import { clearToken, clearUser, getUser } from "../lib/storage";
 import { Pencil, Trash2, LogOut, Calendar, Plus } from "lucide-react";
+import { CreditCard } from "lucide-react";
+
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -13,6 +15,8 @@ export default function Dashboard() {
   const [expenses, setExpenses] = useState([]);
   const [summary, setSummary] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [cards, setCards] = useState([]);
+  const [cardAlerts, setCardAlerts] = useState([]);
 
   const total = useMemo(
     () => expenses.reduce((s, e) => s + Number(e.amount || 0), 0),
@@ -21,54 +25,92 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, [month]);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const [eRes, sRes] = await Promise.all([
-        apiFetch(`/expenses?month=${month}`),
-        apiFetch(`/expenses/summary?month=${month}`),
-      ]);
-      const mapped = (eRes.expenses || []).map(x => ({
-        id: x._id || x.id,
-        category: x.category,
-        amount: x.amount,
-        note: x.note,
-        occurredOn: x.occurredOn,
-      }));
-      setExpenses(mapped);
-      setSummary(sRes.summary || []);
-    } catch (e) {
-      console.error(e);
-    } finally { setLoading(false); }
+ async function load() {
+  setLoading(true);
+  try {
+    const [eRes, sRes, cardsRes, alertsRes] = await Promise.all([
+      apiFetch(`/expenses?month=${month}`),
+      apiFetch(`/expenses/summary?month=${month}`),
+      listCards(),
+      getCardAlerts(),
+    ]);
+
+    const mapped = (eRes.expenses || []).map(x => ({
+      id: x._id || x.id,
+      category: x.category,
+      amount: x.amount,
+      note: x.note,
+      occurredOn: x.occurredOn,
+    }));
+    setExpenses(mapped);
+    setSummary(sRes.summary || []);
+
+    setCards((cardsRes.cards || []).map(c => ({
+      id: c._id || c.id,
+      cardName: c.cardName,
+      last4: c.cardNumberLast4,
+      paymentDay: c.paymentDay,
+      note: c.note,
+    })));
+
+    setCardAlerts(alertsRes.cards || []);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    setLoading(false);
   }
+}
+
 
   function logout() {
     clearToken(); clearUser(); navigate("/login");
   }
 
- 
- async function addExpense(e) {
-  e.preventDefault();
 
- const formEl = e.currentTarget;           
- const form = new FormData(formEl);
+  async function addExpense(e) {
+    e.preventDefault();
 
-  const payload = {
-    category: form.get("category"),
-    amount: parseFloat(form.get("amount")),
-    occurredOn: form.get("date"),
-    note: form.get("note") || undefined,
-  };
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
 
-  await apiFetch("/expenses", { method: "POST", body: payload });
+    const payload = {
+      category: form.get("category"),
+      amount: parseFloat(form.get("amount")),
+      occurredOn: form.get("date"),
+      note: form.get("note") || undefined,
+    };
 
- formEl.reset();                            
-  await load();
-}
+    await apiFetch("/expenses", { method: "POST", body: payload });
+
+    formEl.reset();
+    await load();
+  }
 
   async function remove(id) {
     if (!confirm("Delete this expense?")) return;
     await apiFetch(`/expenses/${id}`, { method: "DELETE" });
+    await load();
+  }
+  async function addCard(e) {
+    e.preventDefault();
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
+
+    const payload = {
+      cardName: form.get("cardName"),
+      cardNumber: form.get("cardNumber"),
+      paymentDay: Number(form.get("paymentDay")),
+      note: form.get("note") || undefined,
+    };
+
+    await createCardApi(payload);
+    formEl.reset();
+    await load();
+  }
+
+  async function removeCard(id) {
+    if (!confirm("Delete this card?")) return;
+    await deleteCardApi(id);
     await load();
   }
 
@@ -76,6 +118,18 @@ export default function Dashboard() {
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white border-b">
+        {cardAlerts.length > 0 && (
+          <div className="max-w-6xl mx-auto mt-4 px-4">
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm flex items-center gap-2">
+              <CreditCard className="h-4 w-4" />
+              <div>
+                <strong>Reminder:</strong>{" "}
+                {cardAlerts.length === 1 ? "A card payment is" : "Card payments are"} due tomorrow:{" "}
+                {cardAlerts.map(c => `${c.cardName} (•••• ${c.cardNumberLast4})`).join(", ")}
+              </div>
+            </div>
+          </div>
+        )}
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div>
             <div className="text-lg font-semibold">ExpenseFlow</div>
@@ -158,15 +212,15 @@ export default function Dashboard() {
           <form onSubmit={addExpense} className="p-4 grid gap-3 md:grid-cols-4">
             <select name="category" required className="border rounded px-3 py-2">
               <option value="">Category</option>
-              {["Food","Transport","Bills","Shopping","Health","Entertainment","Other"].map(c =>
+              {["Food", "Transport", "Bills", "Shopping", "Health", "Entertainment", "Other"].map(c =>
                 <option key={c} value={c}>{c}</option>
               )}
             </select>
             <input name="amount" type="number" step="0.01" min="0" required placeholder="Amount"
-                   className="border rounded px-3 py-2"/>
+              className="border rounded px-3 py-2" />
             <input name="date" type="date" required defaultValue={format(new Date(), "yyyy-MM-dd")}
-                   className="border rounded px-3 py-2"/>
-            <input name="note" placeholder="Note (optional)" className="border rounded px-3 py-2 md:col-span-3"/>
+              className="border rounded px-3 py-2" />
+            <input name="note" placeholder="Note (optional)" className="border rounded px-3 py-2 md:col-span-3" />
             <div className="md:col-span-1">
               <button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-2 font-medium">
                 Save
@@ -204,7 +258,7 @@ export default function Dashboard() {
                         <Pencil className="h-4 w-4" />
                       </button>
                       <button title="Delete" onClick={() => remove(e.id)}
-                              className="p-1.5 rounded hover:bg-red-50 text-red-600 inline-flex">
+                        className="p-1.5 rounded hover:bg-red-50 text-red-600 inline-flex">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </td>
@@ -212,6 +266,97 @@ export default function Dashboard() {
                 ))}
                 {expenses.length === 0 && !loading && (
                   <tr><td className="py-6 text-slate-500" colSpan={5}>No expenses found</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {/* Card payments */}
+        <section className="bg-white border rounded-lg">
+          <div className="p-4 border-b flex items-center justify-between">
+            <div>
+              <div className="font-semibold flex items-center gap-2">
+                <CreditCard className="h-4 w-4" />
+                Card Payments
+              </div>
+              <div className="text-sm text-slate-500">
+                Store cards and their monthly payment dates
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 border-b">
+            <form onSubmit={addCard} className="grid gap-3 md:grid-cols-5">
+              <input
+                name="cardName"
+                required
+                placeholder="Card name (e.g. RBC Visa)"
+                className="border rounded px-3 py-2 md:col-span-2"
+              />
+              <input
+                name="cardNumber"
+                required
+                placeholder="Card number"
+                className="border rounded px-3 py-2"
+              />
+              <input
+                name="paymentDay"
+                type="number"
+                min="1"
+                max="31"
+                required
+                placeholder="Due day (1–31)"
+                className="border rounded px-3 py-2"
+              />
+              <input
+                name="note"
+                placeholder="Note (optional)"
+                className="border rounded px-3 py-2 md:col-span-2"
+              />
+              <div className="md:col-span-1">
+                <button className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded px-3 py-2 font-medium">
+                  Save Card
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="p-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th className="py-2">Card</th>
+                  <th>Last 4</th>
+                  <th>Payment Day</th>
+                  <th className="hidden md:table-cell">Note</th>
+                  <th className="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cards.map(c => (
+                  <tr key={c.id} className="border-t">
+                    <td className="py-2 font-medium">{c.cardName}</td>
+                    <td>•••• {c.last4}</td>
+                    <td>Day {c.paymentDay}</td>
+                    <td className="hidden md:table-cell text-slate-600">
+                      {c.note || "—"}
+                    </td>
+                    <td className="text-right">
+                      <button
+                        onClick={() => removeCard(c.id)}
+                        className="p-1.5 rounded hover:bg-red-50 text-red-600 inline-flex"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {cards.length === 0 && (
+                  <tr>
+                    <td className="py-6 text-slate-500" colSpan={5}>
+                      No cards saved yet
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
