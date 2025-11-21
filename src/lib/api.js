@@ -41,6 +41,16 @@ export async function apiFetch(path, { method = "GET", headers = {}, body } = {}
 }
 
 /**
+ * Update the user's profile (e.g. budget)
+ */
+export function updateUser(data) {
+  return apiFetch("/auth/me", {
+    method: "PATCH",
+    body: data,
+  });
+}
+
+/**
  * Get monthly total overview.
  * @param {string} [month] 
  * @returns {{ total: number, month: string }}
