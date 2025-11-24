@@ -201,12 +201,20 @@ export default function Dashboard() {
             <div className="text-lg font-semibold">ExpenseFlow</div>
             <div className="text-xs text-slate-500">{user?.email}</div>
           </div>
+           <div className="flex items-center gap-2">
+    <button
+      onClick={() => navigate("/analytics")}
+      className="inline-flex items-center gap-2 px-3 py-1.5 border rounded hover:bg-slate-50 text-sm"
+    >
+      Analytics
+    </button>
           <button
             onClick={logout}
             className="inline-flex items-center gap-2 px-3 py-1.5 border rounded hover:bg-slate-50"
           >
             <LogOut className="h-4 w-4" /> Logout
           </button>
+        </div>
         </div>
         {/* Toolbar */}
         <div className="bg-blue-600">
